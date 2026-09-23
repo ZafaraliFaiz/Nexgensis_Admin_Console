@@ -3,90 +3,205 @@
 /**
  * app/(dashboard)/products/page.tsx
  *
- * Products management page entry for the admin dashboard.
+ * Primary Product Catalog management view for the admin dashboard.
  *
- * Capabilities in Phase 1:
- * Provides the initial authenticated workspace view with catalog status, quick stats,
- * and user greeting before Phase 2 builds out the full paginated table & card grid.
+ * Capabilities:
+ * 1. URL-Synchronized State: `page` and `pageSize` state are bound bidirectionally to query parameters (?page=1&pageSize=10).
+ * 2. Responsive Presentation: Automatically switches between `ProductTable` (desktop md+) and `ProductCardList` (mobile <md).
+ * 3. Input Sanitization & Bounds Clamping: Guards against non-numeric or out-of-range URL params and normalizes them safely.
+ * 4. Multi-State Handling: Loading skeletons, error state with Retry, empty state, and synchronized error toasts.
  */
 
-import React, { useEffect, useState } from "react";
-import { getAuthUser } from "@/lib/utils/authStorage";
-import { User } from "@/types";
-import { Package, Sparkles, ArrowRight, ShieldCheck, CheckCircle2 } from "lucide-react";
-import Link from "next/link";
+import React, { useEffect, useState, useCallback, Suspense } from "react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { getProducts } from "@/lib/api/products";
+import { Product, ApiError } from "@/types";
+import {
+  parsePageParam,
+  parsePageSizeParam,
+  clampPage,
+  DEFAULT_PAGE,
+  DEFAULT_PAGE_SIZE,
+} from "@/lib/utils/pagination";
+import ProductTable from "@/components/products/ProductTable";
+import ProductCardList from "@/components/products/ProductCardList";
+import PaginationControl from "@/components/products/PaginationControl";
+import ProductSkeleton from "@/components/products/ProductSkeleton";
+import EmptyState from "@/components/common/EmptyState";
+import ErrorState from "@/components/common/ErrorState";
+import toast from "react-hot-toast";
+import { Package, Sparkles } from "lucide-react";
 
-export default function ProductsPage() {
-  const [user, setUser] = useState<User | null>(null);
+function ProductsContent() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
+  // Parse parameters from URL with safety fallbacks
+  const urlPage = parsePageParam(searchParams.get("page"), DEFAULT_PAGE);
+  const urlPageSize = parsePageSizeParam(searchParams.get("pageSize"), [10, 20, 50], DEFAULT_PAGE_SIZE);
+
+  // Data & lifecycle state
+  const [products, setProducts] = useState<Product[]>([]);
+  const [total, setTotal] = useState<number>(0);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [error, setError] = useState<ApiError | null>(null);
+
+  /**
+   * Updates the URL search query parameters safely.
+   */
+  const updateQueryParams = useCallback(
+    (newPage: number, newPageSize: number) => {
+      const params = new URLSearchParams(searchParams.toString());
+
+      if (newPage === DEFAULT_PAGE) {
+        params.delete("page");
+      } else {
+        params.set("page", String(newPage));
+      }
+
+      if (newPageSize === DEFAULT_PAGE_SIZE) {
+        params.delete("pageSize");
+      } else {
+        params.set("pageSize", String(newPageSize));
+      }
+
+      const queryString = params.toString();
+      const targetUrl = queryString ? `${pathname}?${queryString}` : pathname;
+      router.push(targetUrl);
+    },
+    [pathname, router, searchParams]
+  );
+
+  /**
+   * Primary data fetching routine.
+   * Calculates skip offset: (page - 1) * pageSize.
+   */
+  const fetchProductList = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+
+    const skip = (urlPage - 1) * urlPageSize;
+
+    try {
+      const data = await getProducts({
+        limit: urlPageSize,
+        skip,
+      });
+
+      setProducts(data.products);
+      setTotal(data.total);
+
+      // Bounds Clamping Guard: If user entered an out-of-range ?page in URL (e.g. ?page=999)
+      const validMaxPage = Math.max(1, Math.ceil(data.total / urlPageSize));
+      if (urlPage > validMaxPage && data.total > 0) {
+        updateQueryParams(validMaxPage, urlPageSize);
+      }
+    } catch (err) {
+      const apiErr = err as ApiError;
+      setError(apiErr);
+      toast.error(apiErr.message || "Failed to load products. Please check your connection.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [urlPage, urlPageSize, updateQueryParams]);
+
+  // Re-fetch whenever URL page or pageSize changes
   useEffect(() => {
-    setUser(getAuthUser());
-  }, []);
+    fetchProductList();
+  }, [fetchProductList]);
+
+  /**
+   * Handle pagination button clicks (Previous, Next, Numbered page).
+   */
+  const handlePageChange = (newPage: number) => {
+    const clamped = clampPage(newPage, total, urlPageSize);
+    if (clamped !== urlPage) {
+      updateQueryParams(clamped, urlPageSize);
+      // Smooth scroll back to top of table on page change
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
+
+  /**
+   * Handle page size switcher (10, 20, 50).
+   * Resets active page to 1 to prevent invalid offsets.
+   */
+  const handlePageSizeChange = (newPageSize: number) => {
+    if (newPageSize !== urlPageSize) {
+      updateQueryParams(1, newPageSize);
+    }
+  };
 
   return (
     <div className="space-y-6">
-      {/* Top Banner / Welcome Bar */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative overflow-hidden">
-        <div className="space-y-2 z-10">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-            Phase 1 Setup Complete &bull; Authenticated Session
+      {/* Page Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
+              Products
+            </h1>
+            {!isLoading && !error && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-primary-50 text-primary-700 border border-primary-200">
+                <Package className="w-3.5 h-3.5" />
+                {total} Items
+              </span>
+            )}
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
-            Welcome back, {user?.firstName || user?.username || "Admin"}
-          </h1>
-          <p className="text-sm text-slate-500 max-w-2xl">
-            Enterprise Product Catalog Management Console. Authentication, shared Axios client with interceptors,
-            Edge middleware, and design system tokens are active.
+          <p className="text-sm text-slate-500">
+            Browse, inspect, and manage catalog items, inventory levels, and pricing.
           </p>
         </div>
 
-        <div className="flex items-center gap-3 z-10">
-          <div className="px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs">
-            <span className="text-slate-400 block font-medium">Signed in as</span>
-            <span className="font-semibold text-slate-800 font-mono">{user?.email || user?.username}</span>
+        {/* Live status badge */}
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-white border border-slate-200 text-slate-600 shadow-sm">
+            <Sparkles className="w-3.5 h-3.5 text-primary-600" />
+            <span>DummyJSON Live Feed</span>
           </div>
         </div>
-
-        {/* Decorative background circle */}
-        <div className="absolute right-0 top-0 w-64 h-64 bg-primary-50 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
       </div>
 
-      {/* Overview Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">API Connection</span>
-            <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-              <Sparkles className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="text-lg font-bold text-slate-900">DummyJSON API v2</div>
-          <p className="text-xs text-slate-500 mt-1">Single shared Axios instance with auth interceptors.</p>
-        </div>
+      {/* Main Content Area */}
+      {error ? (
+        <ErrorState error={error} onRetry={fetchProductList} />
+      ) : isLoading ? (
+        <ProductSkeleton count={urlPageSize} />
+      ) : products.length === 0 ? (
+        <EmptyState
+          title="No products available"
+          description="The product catalog returned zero results for this pagination slice."
+          actionLabel="Reset to Page 1"
+          onAction={() => handlePageChange(1)}
+        />
+      ) : (
+        <div className="space-y-4">
+          {/* Desktop Table */}
+          <ProductTable products={products} />
 
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Route Protection</span>
-            <div className="w-8 h-8 rounded-lg bg-primary-50 text-primary-600 flex items-center justify-center">
-              <ShieldCheck className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="text-lg font-bold text-slate-900">Edge Middleware</div>
-          <p className="text-xs text-slate-500 mt-1">Guards /products, /dashboard, and redirects /.</p>
-        </div>
+          {/* Mobile Card List */}
+          <ProductCardList products={products} />
 
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Next Phase</span>
-            <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
-              <Package className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="text-lg font-bold text-slate-900">Phase 2: Product List</div>
-          <p className="text-xs text-slate-500 mt-1">Paginated desktop table, mobile cards, and page size controls.</p>
+          {/* Pagination Controls */}
+          <PaginationControl
+            currentPage={urlPage}
+            pageSize={urlPageSize}
+            total={total}
+            onPageChange={handlePageChange}
+            onPageSizeChange={handlePageSizeChange}
+            isLoading={isLoading}
+          />
         </div>
-      </div>
+      )}
     </div>
+  );
+}
+
+export default function ProductsPage() {
+  return (
+    <Suspense fallback={<ProductSkeleton count={10} />}>
+      <ProductsContent />
+    </Suspense>
   );
 }
