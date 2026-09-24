@@ -42,7 +42,7 @@ export default function ProductCardList({ products }: ProductCardListProps) {
             {/* Top Row: Category and Stock Pill */}
             <div className="flex items-center justify-between gap-2">
               <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-700 capitalize border border-slate-200">
-                {product.category.replace(/-/g, " ")}
+                {(product.category || "General").replace(/-/g, " ")}
               </span>
               <span
                 className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold border ${stockBadge.className}`}
@@ -82,7 +82,7 @@ export default function ProductCardList({ products }: ProductCardListProps) {
             <div className="flex items-center justify-between pt-2.5 border-t border-slate-100">
               <div className="flex items-baseline gap-2">
                 <span className="text-base font-bold text-slate-900 font-mono">
-                  ${product.price.toFixed(2)}
+                  ₹{(product.price ?? 0).toFixed(2)}
                 </span>
                 {product.discountPercentage && product.discountPercentage > 0 ? (
                   <span className="text-[11px] text-emerald-600 font-medium">
@@ -94,7 +94,7 @@ export default function ProductCardList({ products }: ProductCardListProps) {
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-1 text-xs font-semibold text-slate-700">
                   <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                  <span>{product.rating.toFixed(1)}</span>
+                  <span>{(product.rating ?? 0).toFixed(1)}</span>
                 </div>
                 <div className="p-1 rounded bg-slate-50 text-slate-400">
                   <ChevronRight className="w-4 h-4" />

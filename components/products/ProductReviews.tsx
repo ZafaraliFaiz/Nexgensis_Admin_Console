@@ -40,7 +40,7 @@ export default function ProductReviews({ reviews = [] }: ProductReviewsProps) {
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            Verified customer ratings and feedback from the DummyJSON catalog
+            Verified customer ratings and catalog feedback
           </p>
         </div>
 

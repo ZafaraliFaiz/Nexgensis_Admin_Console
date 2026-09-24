@@ -5,24 +5,28 @@
  *
  * Full Product Detail view for the admin dashboard.
  *
- * Capabilities & Architectural Decisions (Phase 4):
+ * Capabilities & Architectural Decisions (Phases 1-5):
  * 1. Deep Product Inspection: Displays image gallery, brand details, stock thresholds, pricing with discount calculation,
  *    physical dimensions, return policies, shipping times, warranty details, and verified customer reviews.
- * 2. Resilient Error & 404 Handling: Intercepts 404 status codes or invalid IDs to present a dedicated Not Found state
- *    with a return path rather than throwing uncaught runtime errors.
- * 3. Layout Matching Skeleton: `ProductDetailSkeleton` matches the exact component dimensions to eliminate visual shifts.
- * 4. Phase 5 Action Placeholders: Visibly renders Edit and Delete actions ready for Phase 5 form/modal wiring.
+ * 2. Session Overlay & Local Write Durability:
+ *    Inspects `ProductSessionContext` to display locally modified or created products seamlessly.
+ * 3. Delete Flow with Custom Modal:
+ *    Wired up to `DeleteConfirmModal` and `deleteProduct(id)`. Deletion removes the product from the session overlay,
+ *    emits an informative success toast, and redirects to `/products`.
+ * 4. Edit Navigation: Routes to `/products/[id]/edit` with pre-filled form fields.
  */
 
 import React, { useEffect, useState, use } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { getProductById } from "@/lib/api/products";
+import { getProductById, deleteProduct } from "@/lib/api/products";
+import { useProductSession } from "@/lib/context/ProductSessionContext";
 import { Product, ApiError } from "@/types";
 import { getStockBadgeConfig } from "@/components/products/ProductTable";
 import ProductGallery from "@/components/products/ProductGallery";
 import ProductReviews from "@/components/products/ProductReviews";
 import ProductDetailSkeleton from "@/components/products/ProductDetailSkeleton";
+import DeleteConfirmModal from "@/components/common/DeleteConfirmModal";
 import {
   ArrowLeft,
   ChevronRight,
@@ -50,16 +54,37 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
   const resolvedParams = use(params);
   const productId = resolvedParams.id;
 
+  const { getSessionProduct, recordProductDeleted } = useProductSession();
+
   const [product, setProduct] = useState<Product | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<ApiError | null>(null);
   const [isNotFound, setIsNotFound] = useState<boolean>(false);
+
+  // Delete modal state
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchProduct = async () => {
     setIsLoading(true);
     setError(null);
     setIsNotFound(false);
 
+    // 1. Check session overlay first
+    const sessionItem = getSessionProduct(productId);
+    if (sessionItem === "DELETED") {
+      setIsNotFound(true);
+      setIsLoading(false);
+      return;
+    }
+
+    if (sessionItem) {
+      setProduct(sessionItem);
+      setIsLoading(false);
+      return;
+    }
+
+    // 2. Fetch from DummyJSON API
     try {
       const data = await getProductById(productId);
       setProduct(data);
@@ -78,7 +103,35 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
 
   useEffect(() => {
     fetchProduct();
-  }, [productId]);
+  }, [productId, getSessionProduct]);
+
+  // Handle product deletion
+  const handleDeleteConfirm = async () => {
+    setIsDeleting(true);
+    try {
+      // 1. Attempt DELETE /products/:id
+      try {
+        await deleteProduct(productId);
+      } catch (apiErr) {
+        // Handled gracefully for locally recorded items
+      }
+
+      // 2. Record deletion in session overlay
+      recordProductDeleted(productId);
+
+      // 3. Show clean success toast
+      toast.success("Product deleted successfully");
+
+      // 4. Close modal and navigate back to product list
+      setIsDeleteModalOpen(false);
+      router.push("/products");
+    } catch (err) {
+      const apiErr = err as ApiError;
+      toast.error(apiErr.message || "Failed to delete product.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   // Loading State
   if (isLoading) {
@@ -99,7 +152,7 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
           Product Not Found
         </h1>
         <p className="text-sm text-slate-500 max-w-md mb-6">
-          The product with ID <code className="font-mono text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded">{productId}</code> does not exist in the DummyJSON catalog.
+          The product with ID <code className="font-mono text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded">{productId}</code> does not exist in the catalog or was removed.
         </p>
         <Link
           href="/products"
@@ -112,7 +165,7 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
     );
   }
 
-  // Network / General Error State
+  // General Error State
   if (error || !product) {
     return (
       <div className="space-y-6">
@@ -143,8 +196,7 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
 
   const stockBadge = getStockBadgeConfig(product.stock);
 
-  // Price calculations:
-  // If discountPercentage exists, calculate original full price: original = price / (1 - discountPercentage/100)
+  // Price calculations
   const hasDiscount = product.discountPercentage && product.discountPercentage > 0;
   const originalPrice = hasDiscount
     ? product.price / (1 - product.discountPercentage! / 100)
@@ -152,7 +204,7 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
 
   return (
     <div className="space-y-6">
-      {/* 1. Header with Breadcrumb and Action Buttons */}
+      {/* 1. Header with Breadcrumbs and Wired Action Buttons */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         {/* Breadcrumbs */}
         <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-xs text-slate-500">
@@ -169,25 +221,22 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
           </span>
         </nav>
 
-        {/* Phase 5 Action Buttons (Placeholders with clear visual styling) */}
+        {/* Action Buttons: Edit and Delete */}
         <div className="flex items-center gap-2.5">
-          <button
-            type="button"
+          <Link
+            href={`/products/${productId}/edit`}
             id="edit-product-button"
-            onClick={() => toast("Edit functionality will be wired in Phase 5", { icon: "ℹ️" })}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-sm transition-colors cursor-pointer"
-            title="Edit Product (Phase 5)"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
           >
             <Pencil className="w-3.5 h-3.5 text-slate-500" />
             <span>Edit Product</span>
-          </button>
+          </Link>
 
           <button
             type="button"
             id="delete-product-button"
-            onClick={() => toast("Delete confirmation will be wired in Phase 5", { icon: "ℹ️" })}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-danger-200 bg-danger-50 hover:bg-danger-100 text-danger-700 text-xs font-semibold shadow-sm transition-colors cursor-pointer"
-            title="Delete Product (Phase 5)"
+            onClick={() => setIsDeleteModalOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-danger-200 bg-danger-50 hover:bg-danger-100 active:bg-danger-200 text-danger-700 text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
           >
             <Trash2 className="w-3.5 h-3.5 text-danger-600" />
             <span>Delete</span>
@@ -207,9 +256,8 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
             />
           </div>
 
-          {/* Right: Product Metadata & Purchasing info (7 cols) */}
+          {/* Right: Metadata & Specs (7 cols) */}
           <div className="lg:col-span-7 space-y-6">
-            {/* Title, Category & Brand */}
             <div>
               <div className="flex flex-wrap items-center gap-2 mb-2">
                 <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-primary-50 text-primary-700 border border-primary-200 capitalize">
@@ -241,15 +289,14 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
 
             {/* Price & Rating Bar */}
             <div className="p-4 bg-slate-50/80 border border-slate-200/80 rounded-xl flex flex-wrap items-center justify-between gap-4">
-              {/* Pricing */}
               <div>
                 <div className="flex items-baseline gap-2.5">
                   <span className="text-3xl font-extrabold text-slate-900 font-mono tracking-tight">
-                    ${product.price.toFixed(2)}
+                    ₹{(product.price ?? 0).toFixed(2)}
                   </span>
                   {hasDiscount && (
                     <span className="text-sm font-medium text-slate-400 line-through font-mono">
-                      ${originalPrice.toFixed(2)}
+                      ₹{originalPrice.toFixed(2)}
                     </span>
                   )}
                 </div>
@@ -260,14 +307,13 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
                 )}
               </div>
 
-              {/* Star Rating */}
               <div className="flex items-center gap-2 bg-white px-3.5 py-2 rounded-lg border border-slate-200 shadow-2xs">
                 <div className="flex items-center text-amber-500">
                   <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
                 </div>
                 <div className="text-left">
                   <span className="text-sm font-bold text-slate-900 leading-none">
-                    {product.rating.toFixed(1)}
+                    {(product.rating ?? 0).toFixed(1)}
                   </span>
                   <span className="text-[11px] text-slate-500 block leading-tight">
                     {product.reviews?.length || 0} reviews
@@ -286,14 +332,13 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
               </p>
             </div>
 
-            {/* Technical Specifications & Shipping Grid */}
+            {/* Technical Specifications Grid */}
             <div className="space-y-2.5 pt-4 border-t border-slate-100">
               <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">
                 Specifications &amp; Logistics
               </h3>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {/* Weight */}
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
                   <div className="flex items-center gap-1.5 text-slate-400 text-xs mb-1">
                     <Scale className="w-3.5 h-3.5" />
@@ -304,7 +349,6 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
                   </div>
                 </div>
 
-                {/* Dimensions */}
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
                   <div className="flex items-center gap-1.5 text-slate-400 text-xs mb-1">
                     <Maximize2 className="w-3.5 h-3.5" />
@@ -317,7 +361,6 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
                   </div>
                 </div>
 
-                {/* Shipping */}
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
                   <div className="flex items-center gap-1.5 text-slate-400 text-xs mb-1">
                     <Truck className="w-3.5 h-3.5" />
@@ -328,7 +371,6 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
                   </div>
                 </div>
 
-                {/* Warranty */}
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
                   <div className="flex items-center gap-1.5 text-slate-400 text-xs mb-1">
                     <ShieldCheck className="w-3.5 h-3.5" />
@@ -339,7 +381,6 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
                   </div>
                 </div>
 
-                {/* Return Policy */}
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
                   <div className="flex items-center gap-1.5 text-slate-400 text-xs mb-1">
                     <RotateCcw className="w-3.5 h-3.5" />
@@ -350,7 +391,6 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
                   </div>
                 </div>
 
-                {/* Barcode */}
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
                   <div className="flex items-center gap-1.5 text-slate-400 text-xs mb-1">
                     <Barcode className="w-3.5 h-3.5" />
@@ -366,8 +406,18 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
         </div>
       </div>
 
-      {/* 3. Customer Reviews Section */}
+      {/* 3. Customer Reviews */}
       <ProductReviews reviews={product.reviews} />
+
+      {/* 4. Delete Confirmation Dialog */}
+      <DeleteConfirmModal
+        isOpen={isDeleteModalOpen}
+        title="Delete Product"
+        itemName={product.title}
+        isDeleting={isDeleting}
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setIsDeleteModalOpen(false)}
+      />
     </div>
   );
 }

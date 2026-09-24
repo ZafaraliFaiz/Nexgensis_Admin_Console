@@ -107,17 +107,11 @@ export default function Navbar({
 
       {/* Right section: API status + User menu */}
       <div className="flex items-center gap-4">
-        {/* DummyJSON Public API Badge */}
-        <a
-          href="https://dummyjson.com/docs/products"
-          target="_blank"
-          rel="noreferrer"
-          className="hidden md:flex items-center gap-1.5 text-xs text-slate-500 hover:text-primary-600 transition-colors py-1 px-2 rounded-md hover:bg-slate-50"
-        >
-          <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-          <span>DummyJSON API</span>
-          <ExternalLink className="w-3 h-3 text-slate-400" />
-        </a>
+        {/* Cloud Status Indicator */}
+        <div className="hidden md:flex items-center gap-1.5 text-xs text-slate-600 py-1 px-2.5 rounded-full bg-slate-100 border border-slate-200">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="font-medium">Cloud Connected</span>
+        </div>
 
         {/* User profile dropdown container */}
         <div className="relative" ref={dropdownRef}>

@@ -21,8 +21,11 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "NexGensis | Product Admin Dashboard",
-  description: "Enterprise SaaS product catalog management console",
+  title: {
+    default: "NexGensis Admin | Enterprise Catalog Console",
+    template: "%s | NexGensis Admin",
+  },
+  description: "Enterprise SaaS product catalog management dashboard built with Next.js 14 App Router, TypeScript, and Tailwind CSS.",
 };
 
 export default function RootLayout({

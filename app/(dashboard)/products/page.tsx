@@ -5,7 +5,7 @@
  *
  * Primary Product Catalog management view for the admin dashboard.
  *
- * Capabilities & Architectural Decisions (Phases 1-3):
+ * Capabilities & Architectural Decisions (Phases 1-5):
  * 1. Unified URL-Synced State:
  *    - All 5 query dimensions (?page=&pageSize=&q=&category=&sortBy=&order=) coexist cleanly in the URL.
  *    - Direct URL access or sharing reproduces the exact state, filter set, and pagination slice.
@@ -13,15 +13,18 @@
  *    - Employs an `AbortController` alongside an incrementing request ID reference (`requestIdRef`)
  *      so that if rapid keystrokes trigger multiple queries, only the most recent request applies
  *      to component state, discarding any stale responses that resolve out-of-order.
- *    - Note: This behavior is testable using DummyJSON's simulated latency parameter (&delay=2000).
  * 3. DummyJSON API Limitation Handling:
  *    - DummyJSON cannot perform category filtering and keyword search concurrently.
  *    - UX Rule: Searching takes precedence; when `q` is non-empty, the category filter is disabled
  *      with an explanatory notice. Clearing search re-enables category filtering immediately.
- * 4. Multi-Tier Feedback: Loading skeletons, empty states with contextual messaging, and error retry cards.
+ * 4. Client-Side Session Persistence Overlay:
+ *    - Applies `ProductSessionContext` mutations (session-added products, edited field overrides,
+ *      and deleted IDs) on top of raw DummyJSON responses so mutations persist seamlessly.
+ * 5. Multi-Tier Feedback: Loading skeletons, empty states with contextual messaging, and error retry cards.
  */
 
 import React, { useEffect, useState, useCallback, useRef, Suspense } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import {
   getProducts,
@@ -29,6 +32,7 @@ import {
   getProductsByCategory,
   getCategories,
 } from "@/lib/api/products";
+import { useProductSession } from "@/lib/context/ProductSessionContext";
 import { Product, ApiError, CategoryItem, SortField, SortOrder } from "@/types";
 import {
   parsePageParam,
@@ -49,12 +53,15 @@ import ProductSkeleton from "@/components/products/ProductSkeleton";
 import EmptyState from "@/components/common/EmptyState";
 import ErrorState from "@/components/common/ErrorState";
 import toast from "react-hot-toast";
-import { Package, Sparkles } from "lucide-react";
+import { Package, Sparkles, Plus } from "lucide-react";
 
 function ProductsContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+
+  // Session overlay context
+  const { applySessionOverlay } = useProductSession();
 
   // 1. Read and sanitize all 5 URL query parameters
   const urlPage = parsePageParam(searchParams.get("page"), DEFAULT_PAGE);
@@ -76,9 +83,7 @@ function ProductsContent() {
   const [isCategoriesLoading, setIsCategoriesLoading] = useState<boolean>(false);
 
   // 4. Concurrency & Race-Condition References
-  // AbortController cancels in-flight network sockets
   const abortControllerRef = useRef<AbortController | null>(null);
-  // Monotonically increasing request ID ensures only the latest response writes to state
   const requestIdRef = useRef<number>(0);
 
   // Load category list once on mount
@@ -89,8 +94,8 @@ function ProductsContent() {
       try {
         const list = await getCategories();
         if (isMounted) setCategories(list);
-      } catch (err) {
-        console.error("Failed to load catalog categories:", err);
+      } catch {
+        // Fallback gracefully on category load failure
       } finally {
         if (isMounted) setIsCategoriesLoading(false);
       }
@@ -169,7 +174,6 @@ function ProductsContent() {
 
   /**
    * Main data fetching coordinator.
-   * Determines whether to call `searchProducts`, `getProductsByCategory`, or `getProducts`.
    */
   const fetchProducts = useCallback(async () => {
     // 1. Cancel previous pending request
@@ -200,9 +204,7 @@ function ProductsContent() {
     try {
       let result;
 
-      // DummyJSON API Conflict Rule:
-      // If a search query is present, it takes precedence and searches across all products.
-      // Otherwise, if a category is selected, we query that category endpoint.
+      // Query resolution according to API priority rules
       if (urlQuery) {
         result = await searchProducts({
           ...paginationParams,
@@ -217,21 +219,26 @@ function ProductsContent() {
         result = await getProducts(paginationParams);
       }
 
-      // Guard against out-of-order race conditions: Ignore if a newer request has fired
+      // Guard against out-of-order race conditions
       if (currentRequestId !== requestIdRef.current) {
         return;
       }
 
-      setProducts(result.products);
-      setTotal(result.total);
+      // Apply client-side session write overlay (combines adds, edits, and deletions)
+      const overlaid = applySessionOverlay(result.products, result.total, {
+        category: urlCategory,
+        query: urlQuery,
+      });
+
+      setProducts(overlaid.products);
+      setTotal(overlaid.total);
 
       // Bounds Clamping: Normalize ?page if greater than actual total pages
-      const validMaxPage = Math.max(1, Math.ceil(result.total / urlPageSize));
-      if (urlPage > validMaxPage && result.total > 0) {
+      const validMaxPage = Math.max(1, Math.ceil(overlaid.total / urlPageSize));
+      if (urlPage > validMaxPage && overlaid.total > 0) {
         updateUrlParams({ page: validMaxPage });
       }
     } catch (err: unknown) {
-      // Ignore deliberate AbortController cancellations
       if (err instanceof Error && err.name === "CanceledError") {
         return;
       }
@@ -241,14 +248,14 @@ function ProductsContent() {
 
       const apiErr = err as ApiError;
       setError(apiErr);
-      toast.error(apiErr.message || "Failed to load products from DummyJSON.");
+      toast.error(apiErr.message || "Failed to load products. Please check your connection.");
     } finally {
       if (currentRequestId === requestIdRef.current) {
         setIsLoading(false);
         setIsSearching(false);
       }
     }
-  }, [urlPage, urlPageSize, urlQuery, urlCategory, urlSortBy, urlOrder, updateUrlParams]);
+  }, [urlPage, urlPageSize, urlQuery, urlCategory, urlSortBy, urlOrder, applySessionOverlay, updateUrlParams]);
 
   // Re-fetch whenever URL search params change
   useEffect(() => {
@@ -318,12 +325,21 @@ function ProductsContent() {
           </p>
         </div>
 
-        {/* Live Status indicator */}
-        <div className="flex items-center gap-2 self-start sm:self-auto">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-white border border-slate-200 text-slate-600 shadow-sm">
+        {/* Action Controls: Live Status + Add Product Button */}
+        <div className="flex items-center gap-3 self-start sm:self-auto">
+          <div className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-white border border-slate-200 text-slate-600 shadow-2xs">
             <Sparkles className="w-3.5 h-3.5 text-primary-600" />
-            <span>DummyJSON Live Feed</span>
+            <span>Live Catalog Feed</span>
           </div>
+
+          <Link
+            href="/products/new"
+            id="add-product-button"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 active:bg-primary-800 text-white text-xs font-semibold rounded-lg shadow-sm shadow-primary-600/30 transition-all cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add Product</span>
+          </Link>
         </div>
       </div>
 

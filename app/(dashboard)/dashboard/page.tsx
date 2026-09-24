@@ -34,7 +34,7 @@ export default function DashboardOverviewPage() {
             <Package className="w-4 h-4 text-primary-600" />
           </div>
           <div className="text-2xl font-bold text-slate-900">194</div>
-          <p className="text-xs text-slate-400 mt-1">Across 24 categories in DummyJSON</p>
+          <p className="text-xs text-slate-400 mt-1">Across 24 active categories</p>
         </div>
 
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">

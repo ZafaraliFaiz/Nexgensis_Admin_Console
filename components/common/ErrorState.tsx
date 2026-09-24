@@ -25,7 +25,7 @@ export default function ErrorState({
   title = "Failed to load product catalog",
 }: ErrorStateProps) {
   const errorMessage =
-    error?.message || "An unexpected error occurred while communicating with DummyJSON.";
+    error?.message || "An unexpected error occurred while communicating with the catalog service.";
   const statusCode = error?.status;
 
   return (

@@ -105,3 +105,24 @@ export type SortField = "price" | "rating" | "title";
 
 // Sort ordering direction
 export type SortOrder = "asc" | "desc";
+
+// Form payload model for adding and updating products (flat, simple interface)
+export interface ProductFormValues {
+  title: string;
+  category: string;
+  price: number;
+  stock: number;
+  description: string;
+  thumbnail: string;
+  brand?: string;
+  discountPercentage?: number;
+}
+
+// Payload returned by DummyJSON DELETE /products/:id
+export interface DeleteProductResponse {
+  id: number;
+  isDeleted: boolean;
+  deletedOn?: string;
+  title?: string;
+}
+

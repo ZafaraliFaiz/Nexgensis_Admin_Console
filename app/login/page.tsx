@@ -253,7 +253,7 @@ export default function LoginPage() {
               <Sparkles className="w-3.5 h-3.5 text-primary-600" />
               Demo Accounts:
             </span>
-            <span>DummyJSON Live Auth</span>
+            <span>Enterprise Access</span>
           </div>
 
           <div className="grid grid-cols-2 gap-2">

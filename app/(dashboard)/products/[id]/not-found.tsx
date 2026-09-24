@@ -30,7 +30,7 @@ export default function ProductNotFound() {
       </h1>
 
       <p className="text-sm text-slate-500 max-w-md mb-8">
-        The requested product record does not exist in the DummyJSON catalog or may have been removed.
+        The requested product record does not exist in the catalog or may have been removed.
       </p>
 
       {/* Navigation recovery options */}

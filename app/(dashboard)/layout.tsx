@@ -10,11 +10,16 @@
 
 import React from "react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import { ProductSessionProvider } from "@/lib/context/ProductSessionContext";
 
 export default function AuthenticatedDashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return <DashboardLayout>{children}</DashboardLayout>;
+  return (
+    <ProductSessionProvider>
+      <DashboardLayout>{children}</DashboardLayout>
+    </ProductSessionProvider>
+  );
 }

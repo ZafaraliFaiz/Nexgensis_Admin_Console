@@ -152,7 +152,7 @@ export default function ProductFilters({
                 }`}
                 title={
                   isCategoryDisabled
-                    ? "Category filter is disabled while search is active (DummyJSON API limitation)"
+                    ? "Category filtering is paused while keyword search is active"
                     : undefined
                 }
               >
@@ -256,12 +256,12 @@ export default function ProductFilters({
         )}
       </div>
 
-      {/* API Limitation Notice: Rendered when user is actively searching */}
+      {/* Filter Priority Notice: Rendered when user is actively searching */}
       {isCategoryDisabled && (
         <div className="px-4 py-2.5 rounded-xl bg-amber-50/80 border border-amber-200/80 flex items-center gap-2.5 text-xs text-amber-800 animate-in fade-in duration-200">
           <Info className="w-4 h-4 text-amber-600 shrink-0" />
           <span>
-            <strong>API Limitation:</strong> DummyJSON does not support simultaneous keyword search and category filtering. Category filter is paused while search query is active.
+            <strong>Search Active:</strong> Keyword search takes priority over category filters. Clear the search bar to filter by category.
           </span>
         </div>
       )}

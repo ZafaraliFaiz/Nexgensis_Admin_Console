@@ -122,14 +122,14 @@ export default function ProductTable({ products }: ProductTableProps) {
                   {/* Category Pill */}
                   <td className="py-3.5 px-4 whitespace-nowrap">
                     <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200 capitalize">
-                      {product.category.replace(/-/g, " ")}
+                      {(product.category || "General").replace(/-/g, " ")}
                     </span>
                   </td>
 
                   {/* Price */}
                   <td className="py-3.5 px-4 whitespace-nowrap">
                     <div className="text-sm font-bold text-slate-900 font-mono">
-                      ${product.price.toFixed(2)}
+                      ₹{(product.price ?? 0).toFixed(2)}
                     </div>
                     {product.discountPercentage && product.discountPercentage > 0 ? (
                       <div className="text-[11px] text-emerald-600 font-medium">
@@ -145,7 +145,7 @@ export default function ProductTable({ products }: ProductTableProps) {
                         <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
                       </div>
                       <span className="text-sm font-semibold text-slate-800">
-                        {product.rating.toFixed(1)}
+                        {(product.rating ?? 0).toFixed(1)}
                       </span>
                     </div>
                   </td>

@@ -11,7 +11,15 @@
  */
 
 import { axiosClient } from "./axiosClient";
-import { Product, ProductListResponse, CategoryItem, SortField, SortOrder } from "@/types";
+import {
+  Product,
+  ProductListResponse,
+  CategoryItem,
+  SortField,
+  SortOrder,
+  ProductFormValues,
+  DeleteProductResponse,
+} from "@/types";
 
 export interface GetProductsParams {
   limit: number;
@@ -184,3 +192,53 @@ export async function getProductById(id: number | string): Promise<Product> {
   const response = await axiosClient.get<Product>(`/products/${id}`);
   return response.data;
 }
+
+/**
+ * Creates a new product on DummyJSON.
+ * Endpoint: POST /products/add
+ *
+ * Note: DummyJSON will simulate creation and return an object with a new `id` (e.g. 195),
+ * but does not persist it to their database.
+ *
+ * @param data - Flat form values for the new product
+ * @returns Promise resolving to the created Product record
+ */
+export async function addProduct(data: ProductFormValues): Promise<Product> {
+  const response = await axiosClient.post<Product>("/products/add", data);
+  return response.data;
+}
+
+/**
+ * Updates an existing product on DummyJSON.
+ * Endpoint: PUT /products/:id
+ *
+ * Note: DummyJSON simulates updates and returns the modified product object without persisting.
+ *
+ * @param id - ID of the product to update
+ * @param data - Updated product fields
+ * @returns Promise resolving to the updated Product record
+ */
+export async function updateProduct(
+  id: number | string,
+  data: ProductFormValues
+): Promise<Product> {
+  const response = await axiosClient.put<Product>(`/products/${id}`, data);
+  return response.data;
+}
+
+/**
+ * Deletes a product from DummyJSON.
+ * Endpoint: DELETE /products/:id
+ *
+ * Note: DummyJSON simulates deletion and returns `{ id, isDeleted: true, deletedOn: '...' }`.
+ *
+ * @param id - ID of the product to delete
+ * @returns Promise resolving to DeleteProductResponse
+ */
+export async function deleteProduct(
+  id: number | string
+): Promise<DeleteProductResponse> {
+  const response = await axiosClient.delete<DeleteProductResponse>(`/products/${id}`);
+  return response.data;
+}
+
