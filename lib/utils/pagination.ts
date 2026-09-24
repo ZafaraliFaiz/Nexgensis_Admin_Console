@@ -168,3 +168,40 @@ export function generatePaginationRange(
 
   return Array.from({ length: totalPages }, (_, i) => i + 1);
 }
+
+/**
+ * Parses and sanitizes the sort field parameter from the URL.
+ */
+export function parseSortByParam(value: string | null | undefined): "price" | "rating" | "title" | "" {
+  if (value === "price" || value === "rating" || value === "title") {
+    return value;
+  }
+  return "";
+}
+
+/**
+ * Parses and sanitizes the sort order direction from the URL.
+ */
+export function parseSortOrderParam(value: string | null | undefined): "asc" | "desc" | "" {
+  if (value === "asc" || value === "desc") {
+    return value;
+  }
+  return "";
+}
+
+/**
+ * Sanitizes category query strings from the URL.
+ */
+export function parseCategoryParam(value: string | null | undefined): string {
+  if (!value) return "";
+  return value.trim();
+}
+
+/**
+ * Sanitizes keyword search query strings from the URL.
+ */
+export function parseSearchParam(value: string | null | undefined): string {
+  if (!value) return "";
+  return value.trim();
+}
+

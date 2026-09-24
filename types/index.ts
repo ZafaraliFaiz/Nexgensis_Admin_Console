@@ -97,5 +97,11 @@ export interface LoginCredentials {
 export interface CategoryItem {
   slug: string;
   name: string;
-  url: string;
+  url?: string;
 }
+
+// Supported sort fields for product catalog queries
+export type SortField = "price" | "rating" | "title";
+
+// Sort ordering direction
+export type SortOrder = "asc" | "desc";
